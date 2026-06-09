@@ -1,9 +1,13 @@
-from fastapi import FastAPI
+from typing import Annotated
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 from sqlalchemy import text
 import os
 from dotenv import load_dotenv
+from auth import create_access_token
+from schemas import UserRegister
+from models import Users
 
 load_dotenv()
 
@@ -26,6 +30,15 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # The engine handles connection pools and executes raw SQL queries under the hood
 engine = create_engine(DATABASE_URL, echo=True)
 
+print(create_access_token({"name": "John Doe", "email": ""}))
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+
+SessionDep = Annotated[Session, Depends(get_session)]
+
 @app.on_event("startup")
 def startup():
     try:
@@ -34,10 +47,17 @@ def startup():
         print("✅ Database connected successfully")
     except Exception as e:
         print(f"❌ Database connection failed: {e}")
+        raise HTTPException(status_code=500, detail="Database connection failed")
 
-@app.get("/users")
-async def get_users():
-    return [
-        {"id": 1, "name": "John Doe", "email": "john.doe@example.com"},
-        {"id": 2, "name": "Jane Smith", "email": "jane.smith@example.com"},
-    ]
+@app.post("/user/register")
+async def register_user(user: UserRegister, session: SessionDep):
+    try:
+        db_user = Users(name=user.name, email=user.email, password=user.password)
+        session.add(db_user)
+        session.commit()
+        session.refresh(db_user)
+        return {"id": db_user.id, "email": db_user.email, "name": db_user.name}
+    except Exception as e:
+        print(f"❌ Error occurred: {e}")
+        session.rollback()
+        raise HTTPException(status_code=500, detail="Internal Server Error")
