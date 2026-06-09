@@ -5,8 +5,8 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select
 from sqlalchemy import text
 import os
 from dotenv import load_dotenv
-from auth import create_access_token
-from schemas import UserRegister
+from auth import create_access_token, hash_password, verify_password
+from schemas import UserRegister, UserLogin
 from models import Users
 
 load_dotenv()
@@ -51,13 +51,20 @@ def startup():
 
 @app.post("/user/register")
 async def register_user(user: UserRegister, session: SessionDep):
-    try:
-        db_user = Users(name=user.name, email=user.email, password=user.password)
-        session.add(db_user)
-        session.commit()
-        session.refresh(db_user)
-        return {"id": db_user.id, "email": db_user.email, "name": db_user.name}
-    except Exception as e:
-        print(f"❌ Error occurred: {e}")
-        session.rollback()
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+    findUser = session.exec(select(Users).where(Users.email == user.email)).first()
+    if findUser:
+        raise HTTPException(status_code=400, detail="User already exists")
+    db_user = Users(name=user.name, email=user.email, password=hash_password(user.password))
+    session.add(db_user)
+    session.commit()
+    session.refresh(db_user)
+    return {"id": db_user.id, "email": db_user.email, "name": db_user.name}
+        
+
+@app.post("/user/login")
+async def login_user(user: UserLogin, session: SessionDep):
+    findUser = session.exec(select(Users).where(Users.email == user.email)).first()
+    if not findUser or not verify_password(user.password, findUser.password):
+        raise HTTPException(status_code=400, detail="Invalid email or password")
+    token = create_access_token({"name": findUser.name, "email": findUser.email})
+    return {"access_token": token, "token_type": "bearer", "user": {"id": findUser.id, "email": findUser.email, "name": findUser.name}}
