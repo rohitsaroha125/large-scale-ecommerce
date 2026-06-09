@@ -1,8 +1,12 @@
 from datetime import datetime, timedelta
 import jwt 
 import bcrypt
+import os
+from dotenv import load_dotenv
 
-SECRET_KEY = "your-secret-key"  # use env var in prod
+load_dotenv()
+
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
